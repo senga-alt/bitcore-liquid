@@ -116,3 +116,113 @@
 (define-read-only (get-token-uri)
   (ok (var-get token-uri))
 )
+
+;; PRIVATE UTILITY FUNCTIONS - INTERNAL LOGIC
+
+(define-private (calculate-yield
+    (amount uint)
+    (blocks uint)
+  )
+  (let (
+      (rate (var-get yield-rate))
+      (time-factor (/ blocks u144)) ;; Approximately daily blocks
+      (base-yield (* amount rate))
+    )
+    (/ (* base-yield time-factor) u10000)
+  )
+)
+
+(define-private (update-risk-score
+    (staker principal)
+    (amount uint)
+  )
+  (let (
+      (current-score (default-to u0 (map-get? risk-scores staker)))
+      (stake-factor (/ amount u100000000)) ;; Factor based on stake size
+      (new-score (+ current-score stake-factor))
+    )
+    (map-set risk-scores staker new-score)
+    new-score
+  )
+)
+
+(define-private (check-yield-availability)
+  (let (
+      (current-block stacks-block-height)
+      (last-distribution (var-get last-distribution-block))
+    )
+    (if (>= current-block (+ last-distribution u144))
+      (ok true)
+      err-no-yield-available
+    )
+  )
+)
+
+(define-private (transfer-internal
+    (amount uint)
+    (sender principal)
+    (recipient principal)
+  )
+  (let ((sender-balance (default-to u0 (map-get? staker-balances sender))))
+    (asserts! (>= sender-balance amount) err-insufficient-balance)
+    (map-set staker-balances sender (- sender-balance amount))
+    (map-set staker-balances recipient
+      (+ (default-to u0 (map-get? staker-balances recipient)) amount)
+    )
+    (ok true)
+  )
+)
+
+;; CORE PROTOCOL FUNCTIONS - MAIN FUNCTIONALITY
+
+(define-public (initialize-pool (initial-rate uint))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (asserts! (not (var-get pool-active)) err-already-initialized)
+    (var-set pool-active true)
+    (var-set yield-rate initial-rate)
+    (var-set last-distribution-block stacks-block-height)
+    (ok true)
+  )
+)
+
+(define-public (stake (amount uint))
+  (begin
+    (asserts! (var-get pool-active) err-pool-inactive)
+    (asserts! (>= amount minimum-stake-amount) err-minimum-stake)
+    ;; Update staker balance
+    (let (
+        (current-balance (default-to u0 (map-get? staker-balances tx-sender)))
+        (new-balance (+ current-balance amount))
+      )
+      (map-set staker-balances tx-sender new-balance)
+      (var-set total-staked (+ (var-get total-staked) amount))
+      ;; Update risk score
+      (update-risk-score tx-sender amount)
+      ;; Set up insurance coverage if active
+      (if (var-get insurance-active)
+        (map-set insurance-coverage tx-sender amount)
+        true
+      )
+      (ok true)
+    )
+  )
+)
+
+(define-public (unstake (amount uint))
+  (let ((current-balance (default-to u0 (map-get? staker-balances tx-sender))))
+    (asserts! (var-get pool-active) err-pool-inactive)
+    (asserts! (>= current-balance amount) err-insufficient-balance)
+    ;; Process pending rewards before unstaking
+    (try! (claim-rewards))
+    ;; Update balances
+    (map-set staker-balances tx-sender (- current-balance amount))
+    (var-set total-staked (- (var-get total-staked) amount))
+    ;; Update insurance coverage if active
+    (if (var-get insurance-active)
+      (map-set insurance-coverage tx-sender (- current-balance amount))
+      true
+    )
+    (ok true)
+  )
+)
