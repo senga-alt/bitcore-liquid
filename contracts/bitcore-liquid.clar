@@ -226,3 +226,106 @@
     (ok true)
   )
 )
+
+(define-public (distribute-yield)
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (asserts! (var-get pool-active) err-pool-inactive)
+    (try! (check-yield-availability))
+    (let (
+        (current-block stacks-block-height)
+        (blocks-passed (- current-block (var-get last-distribution-block)))
+        (total-yield-amount (calculate-yield (var-get total-staked) blocks-passed))
+      )
+      ;; Update total yield
+      (var-set total-yield (+ (var-get total-yield) total-yield-amount))
+      (var-set last-distribution-block current-block)
+      ;; Record distribution history
+      (map-set yield-distribution-history current-block {
+        block: current-block,
+        amount: total-yield-amount,
+        apy: (var-get yield-rate),
+      })
+      (ok total-yield-amount)
+    )
+  )
+)
+
+(define-public (claim-rewards)
+  (begin
+    (asserts! (var-get pool-active) err-pool-inactive)
+    (let (
+        (staker-balance (default-to u0 (map-get? staker-balances tx-sender)))
+        (current-rewards (default-to u0 (map-get? staker-rewards tx-sender)))
+        (blocks-passed (- stacks-block-height (var-get last-distribution-block)))
+        (new-rewards (calculate-yield staker-balance blocks-passed))
+        (total-rewards (+ current-rewards new-rewards))
+      )
+      (asserts! (> total-rewards u0) err-no-yield-available)
+      ;; Update rewards balance
+      (map-set staker-rewards tx-sender u0)
+      (map-set staker-balances tx-sender (+ staker-balance total-rewards))
+      (ok total-rewards)
+    )
+  )
+)
+
+;; TRANSFER & TOKEN MANAGEMENT - SIP-010 OPERATIONS
+
+(define-public (transfer
+    (amount uint)
+    (sender principal)
+    (recipient principal)
+    (memo (optional (buff 34)))
+  )
+  (begin
+    (asserts! (is-eq tx-sender sender) err-unauthorized)
+    (try! (transfer-internal amount sender recipient))
+    (match memo
+      to-print (print to-print)
+      0x
+    )
+    (ok true)
+  )
+)
+
+(define-public (set-token-uri (new-uri (optional (string-utf8 256))))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (ok (var-set token-uri new-uri))
+  )
+)
+
+;; READ-ONLY QUERY FUNCTIONS - PROTOCOL INFORMATION
+
+(define-read-only (get-staker-balance (staker principal))
+  (ok (default-to u0 (map-get? staker-balances staker)))
+)
+
+(define-read-only (get-staker-rewards (staker principal))
+  (ok (default-to u0 (map-get? staker-rewards staker)))
+)
+
+(define-read-only (get-pool-stats)
+  (ok {
+    total-staked: (var-get total-staked),
+    total-yield: (var-get total-yield),
+    current-rate: (var-get yield-rate),
+    pool-active: (var-get pool-active),
+    insurance-active: (var-get insurance-active),
+    insurance-balance: (var-get insurance-fund-balance),
+  })
+)
+
+(define-read-only (get-risk-score (staker principal))
+  (ok (default-to u0 (map-get? risk-scores staker)))
+)
+
+;; CONTRACT INITIALIZATION - SETUP
+
+(begin
+  (var-set pool-active false)
+  (var-set insurance-active false)
+  (var-set yield-rate u500) ;; 5% base APY
+  (var-set last-distribution-block stacks-block-height)
+)
