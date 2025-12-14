@@ -395,6 +395,46 @@
   )
 )
 
+;; EMERGENCY & ADMIN CONTROLS
+
+(define-public (pause-pool)
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (asserts! (not (var-get pool-paused)) err-paused)
+    (var-set pool-paused true)
+    (print {event: \"pool-paused\", block: stacks-block-height})\n    (ok true)
+  )
+)
+
+(define-public (unpause-pool)
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (asserts! (var-get pool-paused) err-pool-inactive)
+    (var-set pool-paused false)
+    (print {event: \"pool-unpaused\", block: stacks-block-height})
+    (ok true)
+  )
+)
+
+(define-public (update-yield-rate (new-rate uint))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (asserts! (<= new-rate u10000) err-invalid-amount)
+    (var-set yield-rate new-rate)
+    (print {event: \"yield-rate-updated\", new-rate: new-rate, block: stacks-block-height})
+    (ok true)
+  )
+)
+
+(define-public (toggle-insurance (active bool))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (var-set insurance-active active)
+    (print {event: \"insurance-toggled\", active: active, block: stacks-block-height})
+    (ok true)
+  )
+)
+
 ;; READ-ONLY QUERY FUNCTIONS - PROTOCOL INFORMATION
 
 (define-read-only (get-staker-balance (staker principal))
