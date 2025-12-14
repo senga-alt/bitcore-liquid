@@ -179,6 +179,8 @@
   (begin
     (asserts! (is-eq tx-sender contract-owner) err-owner-only)
     (asserts! (not (var-get pool-active)) err-already-initialized)
+    ;; Validate initial rate is reasonable (max 100% APY = 10000 basis points)
+    (asserts! (<= initial-rate u10000) err-invalid-amount)
     (var-set pool-active true)
     (var-set yield-rate initial-rate)
     (var-set last-distribution-block stacks-block-height)
@@ -280,6 +282,9 @@
   )
   (begin
     (asserts! (is-eq tx-sender sender) err-unauthorized)
+    ;; Validate transfer parameters
+    (asserts! (> amount u0) err-invalid-amount)
+    (asserts! (not (is-eq sender recipient)) err-invalid-amount)
     (try! (transfer-internal amount sender recipient))
     (match memo
       to-print (print to-print)
@@ -292,7 +297,10 @@
 (define-public (set-token-uri (new-uri (optional (string-utf8 256))))
   (begin
     (asserts! (is-eq tx-sender contract-owner) err-owner-only)
-    (ok (var-set token-uri new-uri))
+    ;; No additional validation needed for optional string-utf8 type
+    ;; as it's already constrained by type system (max 256 chars)
+    (var-set token-uri new-uri)
+    (ok true)
   )
 )
 
