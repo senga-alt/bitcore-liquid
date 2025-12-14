@@ -448,9 +448,11 @@
 (define-read-only (get-pool-stats)
   (ok {
     total-staked: (var-get total-staked),
+    total-supply: (ft-get-supply liquid-core-btc),
     total-yield: (var-get total-yield),
     current-rate: (var-get yield-rate),
     pool-active: (var-get pool-active),
+    pool-paused: (var-get pool-paused),
     insurance-active: (var-get insurance-active),
     insurance-balance: (var-get insurance-fund-balance),
   })
