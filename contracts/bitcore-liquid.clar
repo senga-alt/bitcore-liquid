@@ -402,7 +402,8 @@
     (asserts! (is-eq tx-sender contract-owner) err-owner-only)
     (asserts! (not (var-get pool-paused)) err-paused)
     (var-set pool-paused true)
-    (print {event: \"pool-paused\", block: stacks-block-height})\n    (ok true)
+    (print {event: "pool-paused", block: stacks-block-height})
+    (ok true)
   )
 )
 
