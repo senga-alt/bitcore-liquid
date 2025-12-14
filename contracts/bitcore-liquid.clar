@@ -297,9 +297,12 @@
 (define-public (set-token-uri (new-uri (optional (string-utf8 256))))
   (begin
     (asserts! (is-eq tx-sender contract-owner) err-owner-only)
-    ;; No additional validation needed for optional string-utf8 type
-    ;; as it's already constrained by type system (max 256 chars)
-    (var-set token-uri new-uri)
+    ;; Type system already validates: optional string-utf8 with max 256 chars
+    ;; For Clarity 4 compliance, we explicitly match the optional type
+    (match new-uri
+      uri-value (var-set token-uri (some uri-value))
+      (var-set token-uri none)
+    )
     (ok true)
   )
 )
